@@ -1,33 +1,21 @@
 import { LitElement, css, html } from "lit";
+import { keyed } from "lit/directives/keyed.js";
+import { api, TOKEN_KEY } from "./api.js";
+import "./drains-board.js";
 
-const TOKEN_KEY = "tanpit_token";
 const LABELS = { fill: "注液", tanning: "鞣制中", drained: "已放液" };
-
-async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (options.body) headers["Content-Type"] = "application/json";
-  const t = localStorage.getItem(TOKEN_KEY);
-  if (t) headers.Authorization = `Bearer ${t}`;
-  const res = await fetch(path, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || "请求失败");
-  return data;
-}
 
 class TanYard extends LitElement {
   static properties = {
-    ready: { type: Boolean },
     board: { type: Object },
     picked: { type: Object },
     ph: { type: String },
     err: { type: String },
-    username: { type: String },
-    password: { type: String },
   };
 
   static styles = css`
     :host { display: block; font-family: "KaiTi", serif; color: #2b2118; }
-    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 16px 50px; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px 50px; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .pit { min-height: 110px; border-radius: 8px; color: #fff; cursor: pointer; border: 0; }
     .fill { background: #6d8f9e; }
@@ -41,18 +29,15 @@ class TanYard extends LitElement {
 
   constructor() {
     super();
-    this.ready = Boolean(localStorage.getItem(TOKEN_KEY));
     this.board = null;
     this.picked = null;
     this.ph = "4.2";
     this.err = "";
-    this.username = "admin";
-    this.password = "123456";
   }
 
   connectedCallback() {
     super.connectedCallback();
-    if (this.ready) this.refresh();
+    this.refresh();
   }
 
   async refresh() {
@@ -63,22 +48,6 @@ class TanYard extends LitElement {
       }
     } catch (e) {
       this.err = e.message;
-    }
-  }
-
-  async login(e) {
-    e.preventDefault();
-    this.err = "";
-    try {
-      const data = await api("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ username: this.username, password: this.password }),
-      });
-      localStorage.setItem(TOKEN_KEY, data.access_token);
-      this.ready = true;
-      await this.refresh();
-    } catch (ex) {
-      this.err = ex.message;
     }
   }
 
@@ -109,26 +78,10 @@ class TanYard extends LitElement {
   }
 
   render() {
-    if (!this.ready) {
-      return html`<div class="wrap">
-        <h1>南冈鞣场</h1>
-        <form @submit=${this.login} autocomplete="off">
-          <label>用户名
-            <input name="username" autocomplete="off" .value=${this.username} @input=${(e) => (this.username = e.target.value)} />
-          </label>
-          <label>密码
-            <input name="password" type="password" autocomplete="off" .value=${this.password} @input=${(e) => (this.password = e.target.value)} />
-          </label>
-          <p class="hint">已预填 admin / 123456，另有 worker / 123456</p>
-          <button>登录</button>
-        </form>
-        ${this.err ? html`<p class="err">${this.err}</p>` : ""}
-      </div>`;
-    }
     if (!this.board) return html`<div class="wrap">${this.err || "装载坑位…"}</div>`;
     return html`<div class="wrap">
-      <h1>${this.board.yard}</h1>
-      <p>${this.board.village} · 点坑登记浸液酸碱度；放液须最近读数 3.5～5.0</p>
+      <h2>${this.board.yard} · 坑位场地图</h2>
+      <p class="hint">${this.board.village} · 点坑登记浸液酸碱度；放液须最近读数 3.5～5.0</p>
       <div class="grid">
         ${this.board.pits.map(
           (p) => html`<button class="pit ${p.status}" @click=${() => (this.picked = p)}>
@@ -155,3 +108,98 @@ class TanYard extends LitElement {
 }
 
 customElements.define("tan-yard", TanYard);
+
+class TanApp extends LitElement {
+  static properties = {
+    ready: { type: Boolean },
+    view: { type: String },
+    err: { type: String },
+    username: { type: String },
+    password: { type: String },
+  };
+
+  static styles = css`
+    :host { display: block; font-family: "KaiTi", serif; color: #2b2118; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 16px 50px; }
+    nav { display: flex; gap: 4px; border-bottom: 2px solid #8a5a2b; max-width: 880px; margin: 0 auto; padding: 12px 16px 0; }
+    nav a { padding: 8px 18px; text-decoration: none; color: #6b5a48; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; }
+    nav a.on { background: #efe7db; border-color: #cbb9a3; color: #2b2118; font-weight: bold; }
+    .err { color: #9b1c1c; }
+    .hint { color: #6b5a48; font-size: 0.92em; }
+    label { display: block; margin: 8px 0; }
+    input, button { font: inherit; padding: 8px 10px; margin: 4px 6px 4px 0; }
+  `;
+
+  constructor() {
+    super();
+    this.ready = Boolean(localStorage.getItem(TOKEN_KEY));
+    this.view = location.hash === "#drains" ? "drains" : "map";
+    this.err = "";
+    this.username = "admin";
+    this.password = "123456";
+    this._onHash = () => {
+      this.view = location.hash === "#drains" ? "drains" : "map";
+    };
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    addEventListener("hashchange", this._onHash);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    removeEventListener("hashchange", this._onHash);
+  }
+
+  go(view, event) {
+    event.preventDefault();
+    const hash = view === "drains" ? "#drains" : "";
+    if (location.hash !== hash) location.hash = hash;
+  }
+
+  async login(e) {
+    e.preventDefault();
+    this.err = "";
+    try {
+      const data = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username: this.username, password: this.password }),
+      });
+      localStorage.setItem(TOKEN_KEY, data.access_token);
+      this.ready = true;
+    } catch (ex) {
+      this.err = ex.message;
+    }
+  }
+
+  render() {
+    if (!this.ready) {
+      return html`<div class="wrap">
+        <h1>南冈鞣场</h1>
+        <form @submit=${this.login} autocomplete="off">
+          <label>用户名
+            <input name="username" autocomplete="off" .value=${this.username} @input=${(e) => (this.username = e.target.value)} />
+          </label>
+          <label>密码
+            <input name="password" type="password" autocomplete="off" .value=${this.password} @input=${(e) => (this.password = e.target.value)} />
+          </label>
+          <p class="hint">已预填 admin / 123456，另有 worker / 123456</p>
+          <button>登录</button>
+        </form>
+        ${this.err ? html`<p class="err">${this.err}</p>` : ""}
+      </div>`;
+    }
+    return html`
+      <nav>
+        <a href="#" class=${this.view === "map" ? "on" : ""} @click=${(e) => this.go("map", e)}>坑位场地图</a>
+        <a href="#drains" class=${this.view === "drains" ? "on" : ""} @click=${(e) => this.go("drains", e)}>七日放液台</a>
+      </nav>
+      ${keyed(
+        this.view,
+        this.view === "drains" ? html`<seven-day-drains></seven-day-drains>` : html`<tan-yard></tan-yard>`
+      )}`;
+  }
+}
+
+customElements.define("tan-app", TanApp);

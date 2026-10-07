@@ -1,5 +1,6 @@
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+from django.utils import timezone
 
 
 class User(models.Model):
@@ -39,3 +40,17 @@ class LiquorSample(models.Model):
     taken_at = models.DateTimeField(auto_now_add=True)
     ph = models.FloatField()
     operator = models.CharField(max_length=64, blank=True)
+
+
+class DrainEvent(models.Model):
+    """一次成功拨入「已放液」的不可变记录，是七日放液台的唯一计数来源。"""
+
+    pit = models.ForeignKey(Pit, on_delete=models.PROTECT, related_name="drain_events")
+    pit_code = models.CharField(max_length=40)
+    from_status = models.CharField(max_length=20, blank=True)
+    operator = models.CharField(max_length=64, blank=True)
+    drained_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=["drained_at"])]
+        ordering = ["-drained_at", "-id"]
