@@ -34,6 +34,17 @@ class Pit(models.Model):
         unique_together = ("yard", "code")
 
 
+class DrainEvent(models.Model):
+    """一次成功拨到「已放液」即落一笔；同一口坑重复拨态不重复计数。"""
+
+    pit = models.ForeignKey(Pit, on_delete=models.CASCADE, related_name="drain_events")
+    drained_at = models.DateTimeField()
+    operator = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["drained_at"])]
+
+
 class LiquorSample(models.Model):
     pit = models.ForeignKey(Pit, on_delete=models.CASCADE, related_name="samples")
     taken_at = models.DateTimeField(auto_now_add=True)
